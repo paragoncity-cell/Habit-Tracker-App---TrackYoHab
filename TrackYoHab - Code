@@ -1,0 +1,213 @@
+import json
+import os
+from datetime import datetime
+
+# the basic settings for my TrackYoHab habit tracker
+# I put them up here so they are easy to find
+DATA_FILE = "habits.json"
+PERIODS = ["daily", "weekly", "monthly", "yearly"]
+
+class Habit:
+    """
+    class that holds all the habit information 
+    like name, creation date and times of completion
+    """
+    def __init__(self, name, periodicity, created_at=None, completions=None):
+        self.name = name
+        self.periodicity = periodicity  # daily, weekly, monthly, or yearly
+        
+        # if there is no date just uses current date
+        if created_at == None:
+            self.created_at = datetime.now().isoformat()
+        else:
+            self.created_at = created_at
+            
+        # if list is empty starts a new one
+        if completions == None:
+            self.completions = []
+        else:
+            self.completions = completions
+
+    def check_off(self):
+        """
+        This function adds a new timestamp to the list of completions.
+        It runs whenever you finish the habit for the day.
+        """
+        right_now = datetime.now().isoformat()
+        self.completions.append(right_now)
+
+    def to_dict(self):
+        """
+        This turns the object into a dictionary.
+        Otherwise the json.dump function won't work.
+        """
+        temp_dictionary = {
+            "name": self.name,
+            "periodicity": self.periodicity,
+            "created_at": self.created_at,
+            "completions": self.completions
+        }
+        return temp_dictionary
+
+# analytics streaks
+
+def calculate_streak(habit_obj):
+    """
+    Calculates the longest streak.
+    """
+    if len(habit_obj.completions) == 0:
+        return 0
+    
+    # turn strings back into dates
+    all_dates = []
+    for d in habit_obj.completions:
+        day = datetime.fromisoformat(d).date()
+        if day not in all_dates: # no duplicates
+            all_dates.append(day)
+    
+    all_dates.sort()
+    
+    # deciding how far apart dates can be
+    if habit_obj.periodicity == "daily":
+        limit = 1
+    elif habit_obj.periodicity == "weekly":
+        limit = 7
+    elif habit_obj.periodicity == "monthly":
+        limit = 30
+    else:
+        limit = 365
+
+    streak = 0
+    max_s = 0
+    
+    for i in range(len(all_dates)):
+        if i == 0:
+            streak = 1
+        else:
+            # subtract the dates to check difference
+            diff = (all_dates[i] - all_dates[i-1]).days
+            if diff <= limit:
+                streak = streak + 1
+            else:
+                streak = 1
+        
+        if streak > max_s:
+            max_s = streak
+            
+    return max_s
+
+# file handling 
+
+def save_habits(full_list_all_habits):
+    """
+    takes list and saves it to a file.
+    """
+    ready_to_save = []
+    for h in full_list_all_habits:
+        ready_to_save.append(h.to_dict())
+    
+    f = open(DATA_FILE, "w")
+    json.dump(ready_to_save, f, indent=4)
+    f.close()
+
+def load_habits():
+    """
+    gets habits back from the file.
+    If there is no file it returns 5 default habits.
+    """
+    if os.path.exists(DATA_FILE) == False:
+        # these are the default ones
+        h1 = Habit("Brush Teeth", "daily")
+        h2 = Habit("Go to Gym", "daily")
+        h3 = Habit("Laundry", "weekly")
+        h4 = Habit("Pay Rent", "monthly")
+        h5 = Habit("Dentist Visit", "yearly")
+        
+        return [h1, h2, h3, h4, h5]
+    
+    f = open(DATA_FILE, "r")
+    raw_data = json.load(f)
+    f.close()
+    
+    final_habits = []
+    for item in raw_data:
+        # building the object back from the dictionary
+        new_h = Habit(item["name"], item["periodicity"], item["created_at"], item["completions"])
+        final_habits.append(new_h)
+    return final_habits
+
+# User Interface
+
+def main():
+    """
+    the main loop, the user picks one of several options.
+    keeps running until user picks option 6 and exits the app.
+    """
+    habits = load_habits()
+    
+    is_running = True
+    while is_running == True:
+        print("\n--- TrackYoHab ---")
+        print("1. View All Yo Habits")
+        print("2. Add New Habit")
+        print("3. Check-off Habit")
+        print("4. Check Yo Habits (Streaks)")
+        print("5. Delete Habit")
+        print("6. Exit")
+        
+        user_choice = input("Select an option: ")
+
+        if user_choice == "1":
+            print("\nYour Habits:")
+            for h in habits:
+                print("- " + h.name + " (" + h.periodicity + ")")
+        
+        elif user_choice == "2":
+            h_name = input("Habit Name: ")
+            print("Periods: " + ", ".join(PERIODS))
+            h_period = input("Periodicity: ").lower()
+            
+            if h_period in PERIODS:
+                habits.append(Habit(h_name, h_period))
+                save_habits(habits)
+            else:
+                print("That is not a valid period.")
+
+        elif user_choice == "3":
+            find_me = input("Enter a habit name to check off: ")
+            success = False
+            for h in habits:
+                if h.name.lower() == find_me.lower():
+                    h.check_off()
+                    save_habits(habits)
+                    print("Checked off " + h.name + "!")
+                    success = True
+                    break # stop checking when habit name is found
+            
+            if success == False:
+                print("I couldn't find that habit in your list.")
+
+        elif user_choice == "4":
+            print("\nLongest Streaks:")
+            for h in habits:
+                s = calculate_streak(h)
+                print("- " + h.name + ": " + str(s) + " streak")
+
+        elif user_choice == "5":
+            target = input("Enter habit name to delete: ")
+            # create a new list without the one we want to delete
+            new_list = []
+            for h in habits:
+                if h.name.lower() != target.lower():
+                    new_list.append(h)
+            habits = new_list
+            save_habits(habits)
+            print("Habit has been removed.")
+
+        elif user_choice == "6":
+            save_habits(habits)
+            print("See Yo Later!")
+            is_running = False
+
+if __name__ == "__main__":
+    main()
